@@ -1,0 +1,4 @@
+Starting Minecraft... 
+Fehler: Hauptklasse net.minecraft.client.main.Main konnte nicht gefunden oder geladen werden
+Ursache: java.lang.ClassNotFoundException: net.minecraft.client.main.Main
+Exit code: 1 
