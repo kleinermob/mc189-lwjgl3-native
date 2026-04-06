@@ -6,9 +6,9 @@ import net.minecraft.client.resources.model.ModelRotation;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.Vec3i;
-import org.lwjgl.util.vector.Matrix4f;
-import org.lwjgl.util.vector.Vector3f;
-import org.lwjgl.util.vector.Vector4f;
+import net.minecraft.util.Matrix4f;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 public class FaceBakery
 {
@@ -119,17 +119,17 @@ public class FaceBakery
             switch (partRotation.axis)
             {
                 case X:
-                    Matrix4f.rotate(partRotation.angle * 0.017453292F, new Vector3f(1.0F, 0.0F, 0.0F), matrix4f, matrix4f);
+                    net.minecraft.util.Matrix4f.rotate(partRotation.angle * 0.017453292F, new Vector3f(1.0F, 0.0F, 0.0F), matrix4f, matrix4f);
                     vector3f.set(0.0F, 1.0F, 1.0F);
                     break;
 
                 case Y:
-                    Matrix4f.rotate(partRotation.angle * 0.017453292F, new Vector3f(0.0F, 1.0F, 0.0F), matrix4f, matrix4f);
+                    net.minecraft.util.Matrix4f.rotate(partRotation.angle * 0.017453292F, new Vector3f(0.0F, 1.0F, 0.0F), matrix4f, matrix4f);
                     vector3f.set(1.0F, 0.0F, 1.0F);
                     break;
 
                 case Z:
-                    Matrix4f.rotate(partRotation.angle * 0.017453292F, new Vector3f(0.0F, 0.0F, 1.0F), matrix4f, matrix4f);
+                    net.minecraft.util.Matrix4f.rotate(partRotation.angle * 0.017453292F, new Vector3f(0.0F, 0.0F, 1.0F), matrix4f, matrix4f);
                     vector3f.set(1.0F, 1.0F, 0.0F);
             }
 
@@ -137,14 +137,14 @@ public class FaceBakery
             {
                 if (Math.abs(partRotation.angle) == 22.5F)
                 {
-                    vector3f.scale(SCALE_ROTATION_22_5);
+                    vector3f.mul(SCALE_ROTATION_22_5);
                 }
                 else
                 {
-                    vector3f.scale(SCALE_ROTATION_GENERAL);
+                    vector3f.mul(SCALE_ROTATION_GENERAL);
                 }
 
-                Vector3f.add(vector3f, new Vector3f(1.0F, 1.0F, 1.0F), vector3f);
+                vector3f.add(new Vector3f(1.0F, 1.0F, 1.0F), vector3f);
             }
             else
             {
@@ -171,7 +171,7 @@ public class FaceBakery
     private void rotateScale(Vector3f position, Vector3f rotationOrigin, Matrix4f rotationMatrix, Vector3f scale)
     {
         Vector4f vector4f = new Vector4f(position.x - rotationOrigin.x, position.y - rotationOrigin.y, position.z - rotationOrigin.z, 1.0F);
-        Matrix4f.transform(rotationMatrix, vector4f, vector4f);
+        net.minecraft.util.Matrix4f.transform(rotationMatrix, vector4f, vector4f);
         vector4f.x *= scale.x;
         vector4f.y *= scale.y;
         vector4f.z *= scale.z;
@@ -193,9 +193,9 @@ public class FaceBakery
         Vector3f vector3f3 = new Vector3f();
         Vector3f vector3f4 = new Vector3f();
         Vector3f vector3f5 = new Vector3f();
-        Vector3f.sub(vector3f, vector3f1, vector3f3);
-        Vector3f.sub(vector3f2, vector3f1, vector3f4);
-        Vector3f.cross(vector3f4, vector3f3, vector3f5);
+        vector3f.sub(vector3f1, vector3f3);
+        vector3f2.sub(vector3f1, vector3f4);
+        vector3f4.cross(vector3f3, vector3f5);
         float f = (float)Math.sqrt((double)(vector3f5.x * vector3f5.x + vector3f5.y * vector3f5.y + vector3f5.z * vector3f5.z));
         vector3f5.x /= f;
         vector3f5.y /= f;
@@ -207,7 +207,7 @@ public class FaceBakery
         {
             Vec3i vec3i = enumfacing1.getDirectionVec();
             Vector3f vector3f6 = new Vector3f((float)vec3i.getX(), (float)vec3i.getY(), (float)vec3i.getZ());
-            float f2 = Vector3f.dot(vector3f5, vector3f6);
+            float f2 = vector3f5.dot(vector3f6);
 
             if (f2 >= 0.0F && f2 > f1)
             {

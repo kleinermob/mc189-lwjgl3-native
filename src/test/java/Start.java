@@ -15,9 +15,8 @@ import net.minecraft.client.main.Main;
 
 public class Start {
     public static void main(String[] args) {
-        // Provide natives
-        // Currently supported Linux and Windows
-        System.setProperty("org.lwjgl.librarypath", new File("../test_natives/" + (System.getProperty("os.name").startsWith("Windows") ? "windows" : "linux")).getAbsolutePath());
+        // LWJGL3 loads natives automatically from classpath via Maven dependencies
+        // No need to set org.lwjgl.librarypath - natives are in the lwjgl-*-natives-windows.jar
 
         Main.main(concat(new String[]{"--version", "MavenMCP", "--accessToken", "0", "--assetsDir", "assets", "--assetIndex", "1.8", "--userProperties", "{}"}, args));
     }

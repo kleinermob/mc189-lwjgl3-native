@@ -17,6 +17,8 @@ import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.SoundCategory;
+import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 import net.minecraft.client.gui.GuiNewChat;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.resources.I18n;
@@ -29,9 +31,6 @@ import net.minecraft.world.EnumDifficulty;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.Display;
 
 public class GameSettings
 {
@@ -489,7 +488,7 @@ public class GameSettings
         if (settingsOption == GameSettings.Options.ENABLE_VSYNC)
         {
             this.enableVsync = !this.enableVsync;
-            Display.setVSyncEnabled(this.enableVsync);
+            org.lwjgl.glfw.GLFW.glfwSwapInterval(this.enableVsync ? 1 : 0);
         }
 
         if (settingsOption == GameSettings.Options.USE_VBO)

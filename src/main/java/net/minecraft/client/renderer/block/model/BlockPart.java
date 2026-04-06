@@ -13,7 +13,7 @@ import java.util.Map.Entry;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.JsonUtils;
 import net.minecraft.util.MathHelper;
-import org.lwjgl.util.vector.Vector3f;
+import org.joml.Vector3f;
 
 public class BlockPart
 {
@@ -96,7 +96,7 @@ public class BlockPart
             {
                 JsonObject jsonobject = JsonUtils.getJsonObject(p_178256_1_, "rotation");
                 Vector3f vector3f = this.parsePosition(jsonobject, "origin");
-                vector3f.scale(0.0625F);
+                vector3f.mul(0.0625F);
                 EnumFacing.Axis enumfacing$axis = this.parseAxis(jsonobject);
                 float f = this.parseAngle(jsonobject);
                 boolean flag = JsonUtils.getBoolean(jsonobject, "rescale", false);

@@ -19,8 +19,31 @@ import net.minecraft.util.Session;
 
 public class Main
 {
+    static {
+        // Debug: Log as early as possible
+        try {
+            java.io.FileWriter fw = new java.io.FileWriter("static_debug.log", true);
+            java.io.PrintWriter pw = new java.io.PrintWriter(fw);
+            pw.println("[" + new java.util.Date() + "] Main class loaded");
+            pw.flush();
+            pw.close();
+        } catch (Exception e) {
+            System.err.println("Failed to write debug log: " + e.getMessage());
+        }
+    }
     public static void main(String[] p_main_0_)
     {
+        // Debug: Log startup immediately
+        try {
+            java.io.FileWriter fw = new java.io.FileWriter("main_debug.log", true);
+            java.io.PrintWriter pw = new java.io.PrintWriter(fw);
+            pw.println("[" + new java.util.Date() + "] Main.main() started");
+            pw.flush();
+            pw.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        
         System.setProperty("java.net.preferIPv4Stack", "true");
         OptionParser optionparser = new OptionParser();
         optionparser.allowsUnrecognizedOptions();

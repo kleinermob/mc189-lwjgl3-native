@@ -14,7 +14,7 @@ import net.minecraft.client.resources.ResourcePackRepository;
 import net.minecraft.util.Util;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.Sys;
+import java.awt.Desktop;
 
 public class GuiScreenResourcePacks extends GuiScreen
 {
@@ -161,7 +161,7 @@ public class GuiScreenResourcePacks extends GuiScreen
                 if (flag)
                 {
                     logger.info("Opening via system class!");
-                    Sys.openURL("file://" + s);
+                    try { Desktop.getDesktop().browse(new File(s).toURI()); } catch (Exception e) { logger.error("Failed to open file", e); }
                 }
             }
             else if (button.id == 1)

@@ -4,8 +4,8 @@ import com.google.common.collect.Maps;
 import java.util.Map;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.MathHelper;
-import org.lwjgl.util.vector.Matrix4f;
-import org.lwjgl.util.vector.Vector3f;
+import net.minecraft.util.Matrix4f;
+import org.joml.Vector3f;
 
 public enum ModelRotation
 {

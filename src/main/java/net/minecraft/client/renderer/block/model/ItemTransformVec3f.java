@@ -9,7 +9,7 @@ import com.google.gson.JsonParseException;
 import java.lang.reflect.Type;
 import net.minecraft.util.JsonUtils;
 import net.minecraft.util.MathHelper;
-import org.lwjgl.util.vector.Vector3f;
+import org.joml.Vector3f;
 
 public class ItemTransformVec3f
 {
@@ -61,7 +61,7 @@ public class ItemTransformVec3f
             JsonObject jsonobject = p_deserialize_1_.getAsJsonObject();
             Vector3f vector3f = this.parseVector3f(jsonobject, "rotation", ROTATION_DEFAULT);
             Vector3f vector3f1 = this.parseVector3f(jsonobject, "translation", TRANSLATION_DEFAULT);
-            vector3f1.scale(0.0625F);
+            vector3f1.mul(0.0625F);
             vector3f1.x = MathHelper.clamp_float(vector3f1.x, -1.5F, 1.5F);
             vector3f1.y = MathHelper.clamp_float(vector3f1.y, -1.5F, 1.5F);
             vector3f1.z = MathHelper.clamp_float(vector3f1.z, -1.5F, 1.5F);

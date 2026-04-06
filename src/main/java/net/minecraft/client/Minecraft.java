@@ -17,6 +17,8 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.Proxy;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
@@ -171,19 +173,25 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.Validate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.LWJGLException;
-import org.lwjgl.Sys;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.glfw.GLFWWindowSizeCallback;
+import org.lwjgl.glfw.GLFWKeyCallback;
+import org.lwjgl.glfw.GLFWCharCallback;
+import org.lwjgl.glfw.GLFWCursorPosCallback;
+import org.lwjgl.glfw.GLFWMouseButtonCallback;
+import org.lwjgl.glfw.GLFWScrollCallback;
+import org.lwjgl.glfw.GLFWWindowCloseCallback;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GLContext;
-import org.lwjgl.opengl.OpenGLException;
-import org.lwjgl.opengl.PixelFormat;
-import org.lwjgl.util.glu.GLU;
+import org.lwjgl.opengl.GLCapabilities;
+import org.lwjgl.system.MemoryUtil;
+import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
+import org.lwjgl.LWJGLException;
+import java.nio.IntBuffer;
 
 public class Minecraft implements IThreadListener, IPlayerUsage
 {
@@ -193,7 +201,6 @@ public class Minecraft implements IThreadListener, IPlayerUsage
 
     /** A 10MiB preallocation to ensure the heap is reasonably sized. */
     public static byte[] memoryReserve = new byte[10485760];
-    private static final List<DisplayMode> macDisplayModes = Lists.newArrayList(new DisplayMode[] {new DisplayMode(2560, 1600), new DisplayMode(2880, 1800)});
     private final File fileResourcepacks;
     private final PropertyMap twitchDetails;
 
@@ -217,6 +224,13 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     private CrashReport crashReporter;
     public int displayWidth;
     public int displayHeight;
+
+    /** LWJGL3 GLFW window handle */
+    private long windowHandle;
+    private boolean windowCreated = false;
+    private boolean closeRequested = false;
+    private boolean windowResized = false;
+    private int windowedX = -1, windowedY = -1;
 
     /** True if the player is connected to a realms server */
     private boolean connectedToRealms = false;
@@ -401,12 +415,34 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     {
         this.running = true;
 
+        // Debug logging to file for startup issues
+        try {
+            java.io.FileWriter fw = new java.io.FileWriter("debug_startup.log", true);
+            java.io.PrintWriter pw = new java.io.PrintWriter(fw);
+            pw.println("[" + new java.util.Date() + "] Minecraft.run() starting...");
+            pw.flush();
+            pw.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         try
         {
             this.startGame();
         }
         catch (Throwable throwable)
         {
+            // Log error to file
+            try {
+                java.io.FileWriter fw = new java.io.FileWriter("debug_startup.log", true);
+                java.io.PrintWriter pw = new java.io.PrintWriter(fw);
+                pw.println("[" + new java.util.Date() + "] Error in startGame: " + throwable.getMessage());
+                throwable.printStackTrace(pw);
+                pw.flush();
+                pw.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
             CrashReport crashreport = CrashReport.makeCrashReport(throwable, "Initializing game");
             crashreport.makeCategory("Initialization");
             this.displayCrashReport(this.addGraphicsAndWorldToCrashReport(crashreport));
@@ -482,7 +518,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
             this.displayHeight = this.gameSettings.overrideHeight;
         }
 
-        logger.info("LWJGL Version: " + Sys.getVersion());
+        logger.info("LWJGL Version: " + org.lwjgl.Version.getVersion());
         this.setWindowIcon();
         this.setInitialDisplayMode();
         this.createDisplay();
@@ -588,9 +624,9 @@ public class Minecraft implements IThreadListener, IPlayerUsage
 
         try
         {
-            Display.setVSyncEnabled(this.gameSettings.enableVsync);
+            GLFW.glfwSwapInterval(this.gameSettings.enableVsync ? 1 : 0);
         }
-        catch (OpenGLException var2)
+        catch (Exception var2)
         {
             this.gameSettings.enableVsync = false;
             this.gameSettings.saveOptions();
@@ -621,54 +657,77 @@ public class Minecraft implements IThreadListener, IPlayerUsage
         }
     }
 
-    private void createDisplay() throws LWJGLException
+    private void createDisplay()
     {
-        Display.setResizable(true);
-        Display.setTitle("Minecraft 1.8.9");
+        GLFWErrorCallback.createPrint(System.err).set();
 
-        try
+        if (!GLFW.glfwInit())
         {
-            Display.create((new PixelFormat()).withDepthBits(24));
+            throw new RuntimeException("Failed to initialize GLFW");
         }
-        catch (LWJGLException lwjglexception)
+
+        GLFW.glfwDefaultWindowHints();
+        GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
+        GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GLFW.GLFW_TRUE);
+        GLFW.glfwWindowHint(GLFW.GLFW_DEPTH_BITS, 24);
+
+        this.windowHandle = GLFW.glfwCreateWindow(this.displayWidth, this.displayHeight, "Minecraft 1.8.9 (LWJGL3)", 0, 0);
+
+        if (this.windowHandle == 0)
         {
-            logger.error((String)"Couldn\'t set pixel format", (Throwable)lwjglexception);
-
-            try
-            {
-                Thread.sleep(1000L);
-            }
-            catch (InterruptedException var3)
-            {
-                ;
-            }
-
-            if (this.fullscreen)
-            {
-                this.updateDisplayMode();
-            }
-
-            Display.create();
+            throw new RuntimeException("Failed to create GLFW window");
         }
+
+        GLFW.glfwMakeContextCurrent(this.windowHandle);
+        GL.createCapabilities();
+
+        GLFW.glfwShowWindow(this.windowHandle);
+        this.windowCreated = true;
+
+        setupCallbacks();
     }
 
-    private void setInitialDisplayMode() throws LWJGLException
+    private void setupCallbacks()
+    {
+        GLFW.glfwSetWindowSizeCallback(this.windowHandle, (window, width, height) -> {
+            this.displayWidth = width;
+            this.displayHeight = height;
+            this.windowResized = true;
+            Mouse.updateDisplayHeight(height);
+        });
+
+        GLFW.glfwSetWindowCloseCallback(this.windowHandle, (window) -> {
+            this.closeRequested = true;
+        });
+
+        // Initialize Keyboard and Mouse compat classes (sets up GLFW callbacks)
+        Keyboard.init(this.windowHandle);
+        Mouse.init(this.windowHandle, this.displayHeight);
+    }
+
+    public boolean isWindowFocused() {
+        return GLFW.glfwGetWindowAttrib(windowHandle, GLFW.GLFW_FOCUSED) == GLFW.GLFW_TRUE;
+    }
+
+    private void setInitialDisplayMode()
     {
         if (this.fullscreen)
         {
-            Display.setFullscreen(true);
-            DisplayMode displaymode = Display.getDisplayMode();
-            this.displayWidth = Math.max(1, displaymode.getWidth());
-            this.displayHeight = Math.max(1, displaymode.getHeight());
+            long monitor = GLFW.glfwGetPrimaryMonitor();
+            GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
+            if (vidMode != null)
+            {
+                this.displayWidth = Math.max(1, vidMode.width());
+                this.displayHeight = Math.max(1, vidMode.height());
+            }
         }
-        else
-        {
-            Display.setDisplayMode(new DisplayMode(this.displayWidth, this.displayHeight));
-        }
+        // Windowed mode: displayWidth/Height already set from gameSettings
     }
 
     private void setWindowIcon()
     {
+        // LWJGL3 window icon handling - simplified for now
+        // Full implementation would use GLFWImage and GLFW.glfwSetWindowIcon()
         Util.EnumOS util$enumos = Util.getOSType();
 
         if (util$enumos != Util.EnumOS.OSX)
@@ -681,10 +740,8 @@ public class Minecraft implements IThreadListener, IPlayerUsage
                 inputstream = this.mcDefaultResourcePack.getInputStreamAssets(new ResourceLocation("icons/icon_16x16.png"));
                 inputstream1 = this.mcDefaultResourcePack.getInputStreamAssets(new ResourceLocation("icons/icon_32x32.png"));
 
-                if (inputstream != null && inputstream1 != null)
-                {
-                    Display.setIcon(new ByteBuffer[] {this.readImageToBuffer(inputstream), this.readImageToBuffer(inputstream1)});
-                }
+                // LWJGL3 icon setting would go here
+                // For now, skip icon setup
             }
             catch (IOException ioexception)
             {
@@ -838,57 +895,16 @@ public class Minecraft implements IThreadListener, IPlayerUsage
         return bytebuffer;
     }
 
-    private void updateDisplayMode() throws LWJGLException
+    private void updateDisplayMode()
     {
-        Set<DisplayMode> set = Sets.<DisplayMode>newHashSet();
-        Collections.addAll(set, Display.getAvailableDisplayModes());
-        DisplayMode displaymode = Display.getDesktopDisplayMode();
+        long monitor = GLFW.glfwGetPrimaryMonitor();
+        GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
 
-        if (!set.contains(displaymode) && Util.getOSType() == Util.EnumOS.OSX)
+        if (vidMode != null)
         {
-            label53:
-
-            for (DisplayMode displaymode1 : macDisplayModes)
-            {
-                boolean flag = true;
-
-                for (DisplayMode displaymode2 : set)
-                {
-                    if (displaymode2.getBitsPerPixel() == 32 && displaymode2.getWidth() == displaymode1.getWidth() && displaymode2.getHeight() == displaymode1.getHeight())
-                    {
-                        flag = false;
-                        break;
-                    }
-                }
-
-                if (!flag)
-                {
-                    Iterator iterator = set.iterator();
-                    DisplayMode displaymode3;
-
-                    while (true)
-                    {
-                        if (!iterator.hasNext())
-                        {
-                            continue label53;
-                        }
-
-                        displaymode3 = (DisplayMode)iterator.next();
-
-                        if (displaymode3.getBitsPerPixel() == 32 && displaymode3.getWidth() == displaymode1.getWidth() / 2 && displaymode3.getHeight() == displaymode1.getHeight() / 2)
-                        {
-                            break;
-                        }
-                    }
-
-                    displaymode = displaymode3;
-                }
-            }
+            this.displayWidth = vidMode.width();
+            this.displayHeight = vidMode.height();
         }
-
-        Display.setDisplayMode(displaymode);
-        this.displayWidth = displaymode.getWidth();
-        this.displayHeight = displaymode.getHeight();
     }
 
     private void drawSplashScreen(TextureManager textureManagerInstance) throws LWJGLException
@@ -1034,7 +1050,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
 
             if (i != 0)
             {
-                String s = GLU.gluErrorString(i);
+                String s = net.minecraft.client.renderer.GluUtils.gluErrorString(i);
                 logger.error("########## GL ERROR ##########");
                 logger.error("@ " + message);
                 logger.error(i + ": " + s);
@@ -1066,7 +1082,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
         }
         finally
         {
-            Display.destroy();
+            cleanupGLFW();
 
             if (!this.hasCrashed)
             {
@@ -1085,7 +1101,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
         long i = System.nanoTime();
         this.mcProfiler.startSection("root");
 
-        if (Display.isCreated() && Display.isCloseRequested())
+        if (this.windowCreated && this.closeRequested)
         {
             this.shutdown();
         }
@@ -1209,7 +1225,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
         if (this.isFramerateLimitBelowMax())
         {
             this.mcProfiler.startSection("fpslimit_wait");
-            Display.sync(this.getLimitFramerate());
+            syncFPS(this.getLimitFramerate());
             this.mcProfiler.endSection();
         }
 
@@ -1219,19 +1235,26 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     public void updateDisplay()
     {
         this.mcProfiler.startSection("display_update");
-        Display.update();
+        GLFW.glfwSwapBuffers(this.windowHandle);
+        GLFW.glfwPollEvents();
         this.mcProfiler.endSection();
         this.checkWindowResize();
     }
 
     protected void checkWindowResize()
     {
-        if (!this.fullscreen && Display.wasResized())
+        if (!this.fullscreen && this.windowResized)
         {
+            this.windowResized = false;
             int i = this.displayWidth;
             int j = this.displayHeight;
-            this.displayWidth = Display.getWidth();
-            this.displayHeight = Display.getHeight();
+
+            // Get actual framebuffer size
+            IntBuffer width = IntBuffer.allocate(1);
+            IntBuffer height = IntBuffer.allocate(1);
+            GLFW.glfwGetFramebufferSize(this.windowHandle, width, height);
+            this.displayWidth = width.get(0);
+            this.displayHeight = height.get(0);
 
             if (this.displayWidth != i || this.displayHeight != j)
             {
@@ -1248,6 +1271,38 @@ public class Minecraft implements IThreadListener, IPlayerUsage
                 this.resize(this.displayWidth, this.displayHeight);
             }
         }
+    }
+
+    private void syncFPS(int fps)
+    {
+        if (fps <= 0) return;
+        long frameTime = 1000000000L / fps;
+        long currentTime = System.nanoTime();
+        long sleepTime = frameTime - (currentTime - lastFrameTime);
+        if (sleepTime > 0)
+        {
+            try
+            {
+                Thread.sleep(sleepTime / 1000000L, (int)(sleepTime % 1000000L));
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+            }
+        }
+        lastFrameTime = System.nanoTime();
+    }
+
+    private long lastFrameTime = System.nanoTime();
+
+    private void cleanupGLFW()
+    {
+        if (this.windowHandle != 0)
+        {
+            GLFW.glfwDestroyWindow(this.windowHandle);
+        }
+        GLFW.glfwTerminate();
+        this.windowCreated = false;
     }
 
     public int getLimitFramerate()
@@ -1447,24 +1502,6 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     }
 
     /**
-     * Will set the focus to ingame if the Minecraft window is the active with focus. Also clears any GUI screen
-     * currently displayed
-     */
-    public void setIngameFocus()
-    {
-        if (Display.isActive())
-        {
-            if (!this.inGameHasFocus)
-            {
-                this.inGameHasFocus = true;
-                this.mouseHelper.grabMouseCursor();
-                this.displayGuiScreen((GuiScreen)null);
-                this.leftClickCounter = 10000;
-            }
-        }
-    }
-
-    /**
      * Resets the player keystate, disables the ingame focus, and ungrabs the mouse cursor.
      */
     public void setIngameNotInFocus()
@@ -1474,6 +1511,21 @@ public class Minecraft implements IThreadListener, IPlayerUsage
             KeyBinding.unPressAllKeys();
             this.inGameHasFocus = false;
             this.mouseHelper.ungrabMouseCursor();
+        }
+    }
+
+    /**
+     * Called to switch to fullscreen or back. Handles window focus and mouse grabbing.
+     */
+    public void setIngameFocus()
+    {
+        if (GLFW.glfwGetWindowAttrib(this.windowHandle, GLFW.GLFW_FOCUSED) == GLFW.GLFW_TRUE)
+        {
+            if (!this.inGameHasFocus)
+            {
+                this.inGameHasFocus = true;
+                this.mouseHelper.grabMouseCursor();
+            }
         }
     }
 
@@ -1647,11 +1699,19 @@ public class Minecraft implements IThreadListener, IPlayerUsage
             this.fullscreen = !this.fullscreen;
             this.gameSettings.fullScreen = this.fullscreen;
 
+            long monitor = GLFW.glfwGetPrimaryMonitor();
+
             if (this.fullscreen)
             {
+                // Save windowed position
+                IntBuffer x = IntBuffer.allocate(1);
+                IntBuffer y = IntBuffer.allocate(1);
+                GLFW.glfwGetWindowPos(this.windowHandle, x, y);
+                this.windowedX = x.get(0);
+                this.windowedY = y.get(0);
+
                 this.updateDisplayMode();
-                this.displayWidth = Display.getDisplayMode().getWidth();
-                this.displayHeight = Display.getDisplayMode().getHeight();
+                GLFW.glfwSetWindowMonitor(this.windowHandle, monitor, 0, 0, this.displayWidth, this.displayHeight, GLFW.glfwGetVideoMode(monitor).refreshRate());
 
                 if (this.displayWidth <= 0)
                 {
@@ -1665,9 +1725,13 @@ public class Minecraft implements IThreadListener, IPlayerUsage
             }
             else
             {
-                Display.setDisplayMode(new DisplayMode(this.tempDisplayWidth, this.tempDisplayHeight));
                 this.displayWidth = this.tempDisplayWidth;
                 this.displayHeight = this.tempDisplayHeight;
+
+                if (this.windowedX < 0) this.windowedX = 0;
+                if (this.windowedY < 0) this.windowedY = 0;
+
+                GLFW.glfwSetWindowMonitor(this.windowHandle, 0, this.windowedX, this.windowedY, this.displayWidth, this.displayHeight, 0);
 
                 if (this.displayWidth <= 0)
                 {
@@ -1689,8 +1753,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
                 this.updateFramebufferSize();
             }
 
-            Display.setFullscreen(this.fullscreen);
-            Display.setVSyncEnabled(this.gameSettings.enableVsync);
+            GLFW.glfwSwapInterval(this.gameSettings.enableVsync ? 1 : 0);
             this.updateDisplay();
         }
         catch (Exception exception)
@@ -2683,7 +2746,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
         {
             public String call()
             {
-                return Sys.getVersion();
+                return org.lwjgl.Version.getVersion();
             }
         });
         theCrash.getCategory().addCrashSectionCallable("OpenGL", new Callable<String>()
@@ -2799,7 +2862,10 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     {
         playerSnooper.addClientStat("fps", Integer.valueOf(debugFPS));
         playerSnooper.addClientStat("vsync_enabled", Boolean.valueOf(this.gameSettings.enableVsync));
-        playerSnooper.addClientStat("display_frequency", Integer.valueOf(Display.getDisplayMode().getFrequency()));
+        long monitor = GLFW.glfwGetPrimaryMonitor();
+        GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
+        int refreshRate = vidMode != null ? vidMode.refreshRate() : 60;
+        playerSnooper.addClientStat("display_frequency", Integer.valueOf(refreshRate));
         playerSnooper.addClientStat("display_type", this.fullscreen ? "fullscreen" : "windowed");
         playerSnooper.addClientStat("run_time", Long.valueOf((MinecraftServer.getCurrentTimeMillis() - playerSnooper.getMinecraftStartTimeMillis()) / 60L * 1000L));
         playerSnooper.addClientStat("current_action", this.getCurrentAction());
@@ -2833,98 +2899,98 @@ public class Minecraft implements IThreadListener, IPlayerUsage
         playerSnooper.addStatToSnooper("opengl_vendor", GL11.glGetString(GL11.GL_VENDOR));
         playerSnooper.addStatToSnooper("client_brand", ClientBrandRetriever.getClientModName());
         playerSnooper.addStatToSnooper("launched_version", this.launchedVersion);
-        ContextCapabilities contextcapabilities = GLContext.getCapabilities();
-        playerSnooper.addStatToSnooper("gl_caps[ARB_arrays_of_arrays]", Boolean.valueOf(contextcapabilities.GL_ARB_arrays_of_arrays));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_base_instance]", Boolean.valueOf(contextcapabilities.GL_ARB_base_instance));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_blend_func_extended]", Boolean.valueOf(contextcapabilities.GL_ARB_blend_func_extended));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_clear_buffer_object]", Boolean.valueOf(contextcapabilities.GL_ARB_clear_buffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_color_buffer_float]", Boolean.valueOf(contextcapabilities.GL_ARB_color_buffer_float));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_compatibility]", Boolean.valueOf(contextcapabilities.GL_ARB_compatibility));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_compressed_texture_pixel_storage]", Boolean.valueOf(contextcapabilities.GL_ARB_compressed_texture_pixel_storage));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_compute_shader]", Boolean.valueOf(contextcapabilities.GL_ARB_compute_shader));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_buffer]", Boolean.valueOf(contextcapabilities.GL_ARB_copy_buffer));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_image]", Boolean.valueOf(contextcapabilities.GL_ARB_copy_image));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_buffer_float]", Boolean.valueOf(contextcapabilities.GL_ARB_depth_buffer_float));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_compute_shader]", Boolean.valueOf(contextcapabilities.GL_ARB_compute_shader));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_buffer]", Boolean.valueOf(contextcapabilities.GL_ARB_copy_buffer));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_image]", Boolean.valueOf(contextcapabilities.GL_ARB_copy_image));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_buffer_float]", Boolean.valueOf(contextcapabilities.GL_ARB_depth_buffer_float));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_clamp]", Boolean.valueOf(contextcapabilities.GL_ARB_depth_clamp));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_texture]", Boolean.valueOf(contextcapabilities.GL_ARB_depth_texture));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_buffers]", Boolean.valueOf(contextcapabilities.GL_ARB_draw_buffers));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_buffers_blend]", Boolean.valueOf(contextcapabilities.GL_ARB_draw_buffers_blend));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_elements_base_vertex]", Boolean.valueOf(contextcapabilities.GL_ARB_draw_elements_base_vertex));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_indirect]", Boolean.valueOf(contextcapabilities.GL_ARB_draw_indirect));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_instanced]", Boolean.valueOf(contextcapabilities.GL_ARB_draw_instanced));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_explicit_attrib_location]", Boolean.valueOf(contextcapabilities.GL_ARB_explicit_attrib_location));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_explicit_uniform_location]", Boolean.valueOf(contextcapabilities.GL_ARB_explicit_uniform_location));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_layer_viewport]", Boolean.valueOf(contextcapabilities.GL_ARB_fragment_layer_viewport));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_program]", Boolean.valueOf(contextcapabilities.GL_ARB_fragment_program));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_shader]", Boolean.valueOf(contextcapabilities.GL_ARB_fragment_shader));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_program_shadow]", Boolean.valueOf(contextcapabilities.GL_ARB_fragment_program_shadow));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_framebuffer_object]", Boolean.valueOf(contextcapabilities.GL_ARB_framebuffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_framebuffer_sRGB]", Boolean.valueOf(contextcapabilities.GL_ARB_framebuffer_sRGB));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_geometry_shader4]", Boolean.valueOf(contextcapabilities.GL_ARB_geometry_shader4));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_gpu_shader5]", Boolean.valueOf(contextcapabilities.GL_ARB_gpu_shader5));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_half_float_pixel]", Boolean.valueOf(contextcapabilities.GL_ARB_half_float_pixel));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_half_float_vertex]", Boolean.valueOf(contextcapabilities.GL_ARB_half_float_vertex));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_instanced_arrays]", Boolean.valueOf(contextcapabilities.GL_ARB_instanced_arrays));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_map_buffer_alignment]", Boolean.valueOf(contextcapabilities.GL_ARB_map_buffer_alignment));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_map_buffer_range]", Boolean.valueOf(contextcapabilities.GL_ARB_map_buffer_range));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_multisample]", Boolean.valueOf(contextcapabilities.GL_ARB_multisample));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_multitexture]", Boolean.valueOf(contextcapabilities.GL_ARB_multitexture));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_occlusion_query2]", Boolean.valueOf(contextcapabilities.GL_ARB_occlusion_query2));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_pixel_buffer_object]", Boolean.valueOf(contextcapabilities.GL_ARB_pixel_buffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_seamless_cube_map]", Boolean.valueOf(contextcapabilities.GL_ARB_seamless_cube_map));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_shader_objects]", Boolean.valueOf(contextcapabilities.GL_ARB_shader_objects));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_shader_stencil_export]", Boolean.valueOf(contextcapabilities.GL_ARB_shader_stencil_export));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_shader_texture_lod]", Boolean.valueOf(contextcapabilities.GL_ARB_shader_texture_lod));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_shadow]", Boolean.valueOf(contextcapabilities.GL_ARB_shadow));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_shadow_ambient]", Boolean.valueOf(contextcapabilities.GL_ARB_shadow_ambient));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_stencil_texturing]", Boolean.valueOf(contextcapabilities.GL_ARB_stencil_texturing));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_sync]", Boolean.valueOf(contextcapabilities.GL_ARB_sync));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_tessellation_shader]", Boolean.valueOf(contextcapabilities.GL_ARB_tessellation_shader));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_border_clamp]", Boolean.valueOf(contextcapabilities.GL_ARB_texture_border_clamp));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_buffer_object]", Boolean.valueOf(contextcapabilities.GL_ARB_texture_buffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_cube_map]", Boolean.valueOf(contextcapabilities.GL_ARB_texture_cube_map));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_cube_map_array]", Boolean.valueOf(contextcapabilities.GL_ARB_texture_cube_map_array));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_non_power_of_two]", Boolean.valueOf(contextcapabilities.GL_ARB_texture_non_power_of_two));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_uniform_buffer_object]", Boolean.valueOf(contextcapabilities.GL_ARB_uniform_buffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_blend]", Boolean.valueOf(contextcapabilities.GL_ARB_vertex_blend));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_buffer_object]", Boolean.valueOf(contextcapabilities.GL_ARB_vertex_buffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_program]", Boolean.valueOf(contextcapabilities.GL_ARB_vertex_program));
-        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_shader]", Boolean.valueOf(contextcapabilities.GL_ARB_vertex_shader));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_bindable_uniform]", Boolean.valueOf(contextcapabilities.GL_EXT_bindable_uniform));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_equation_separate]", Boolean.valueOf(contextcapabilities.GL_EXT_blend_equation_separate));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_func_separate]", Boolean.valueOf(contextcapabilities.GL_EXT_blend_func_separate));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_minmax]", Boolean.valueOf(contextcapabilities.GL_EXT_blend_minmax));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_subtract]", Boolean.valueOf(contextcapabilities.GL_EXT_blend_subtract));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_draw_instanced]", Boolean.valueOf(contextcapabilities.GL_EXT_draw_instanced));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_framebuffer_multisample]", Boolean.valueOf(contextcapabilities.GL_EXT_framebuffer_multisample));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_framebuffer_object]", Boolean.valueOf(contextcapabilities.GL_EXT_framebuffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_framebuffer_sRGB]", Boolean.valueOf(contextcapabilities.GL_EXT_framebuffer_sRGB));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_geometry_shader4]", Boolean.valueOf(contextcapabilities.GL_EXT_geometry_shader4));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_gpu_program_parameters]", Boolean.valueOf(contextcapabilities.GL_EXT_gpu_program_parameters));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_gpu_shader4]", Boolean.valueOf(contextcapabilities.GL_EXT_gpu_shader4));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_multi_draw_arrays]", Boolean.valueOf(contextcapabilities.GL_EXT_multi_draw_arrays));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_packed_depth_stencil]", Boolean.valueOf(contextcapabilities.GL_EXT_packed_depth_stencil));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_paletted_texture]", Boolean.valueOf(contextcapabilities.GL_EXT_paletted_texture));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_rescale_normal]", Boolean.valueOf(contextcapabilities.GL_EXT_rescale_normal));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_separate_shader_objects]", Boolean.valueOf(contextcapabilities.GL_EXT_separate_shader_objects));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_shader_image_load_store]", Boolean.valueOf(contextcapabilities.GL_EXT_shader_image_load_store));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_shadow_funcs]", Boolean.valueOf(contextcapabilities.GL_EXT_shadow_funcs));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_shared_texture_palette]", Boolean.valueOf(contextcapabilities.GL_EXT_shared_texture_palette));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_stencil_clear_tag]", Boolean.valueOf(contextcapabilities.GL_EXT_stencil_clear_tag));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_stencil_two_side]", Boolean.valueOf(contextcapabilities.GL_EXT_stencil_two_side));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_stencil_wrap]", Boolean.valueOf(contextcapabilities.GL_EXT_stencil_wrap));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_3d]", Boolean.valueOf(contextcapabilities.GL_EXT_texture_3d));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_array]", Boolean.valueOf(contextcapabilities.GL_EXT_texture_array));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_buffer_object]", Boolean.valueOf(contextcapabilities.GL_EXT_texture_buffer_object));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_integer]", Boolean.valueOf(contextcapabilities.GL_EXT_texture_integer));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_lod_bias]", Boolean.valueOf(contextcapabilities.GL_EXT_texture_lod_bias));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_sRGB]", Boolean.valueOf(contextcapabilities.GL_EXT_texture_sRGB));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_vertex_shader]", Boolean.valueOf(contextcapabilities.GL_EXT_vertex_shader));
-        playerSnooper.addStatToSnooper("gl_caps[EXT_vertex_weighting]", Boolean.valueOf(contextcapabilities.GL_EXT_vertex_weighting));
+        GLCapabilities glCapabilities = GL.getCapabilities();
+        playerSnooper.addStatToSnooper("gl_caps[ARB_arrays_of_arrays]", Boolean.valueOf(glCapabilities.GL_ARB_arrays_of_arrays));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_base_instance]", Boolean.valueOf(glCapabilities.GL_ARB_base_instance));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_blend_func_extended]", Boolean.valueOf(glCapabilities.GL_ARB_blend_func_extended));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_clear_buffer_object]", Boolean.valueOf(glCapabilities.GL_ARB_clear_buffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_color_buffer_float]", Boolean.valueOf(glCapabilities.GL_ARB_color_buffer_float));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_compatibility]", Boolean.valueOf(glCapabilities.GL_ARB_compatibility));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_compressed_texture_pixel_storage]", Boolean.valueOf(glCapabilities.GL_ARB_compressed_texture_pixel_storage));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_compute_shader]", Boolean.valueOf(glCapabilities.GL_ARB_compute_shader));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_buffer]", Boolean.valueOf(glCapabilities.GL_ARB_copy_buffer));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_image]", Boolean.valueOf(glCapabilities.GL_ARB_copy_image));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_buffer_float]", Boolean.valueOf(glCapabilities.GL_ARB_depth_buffer_float));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_compute_shader]", Boolean.valueOf(glCapabilities.GL_ARB_compute_shader));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_buffer]", Boolean.valueOf(glCapabilities.GL_ARB_copy_buffer));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_copy_image]", Boolean.valueOf(glCapabilities.GL_ARB_copy_image));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_buffer_float]", Boolean.valueOf(glCapabilities.GL_ARB_depth_buffer_float));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_clamp]", Boolean.valueOf(glCapabilities.GL_ARB_depth_clamp));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_depth_texture]", Boolean.valueOf(glCapabilities.GL_ARB_depth_texture));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_buffers]", Boolean.valueOf(glCapabilities.GL_ARB_draw_buffers));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_buffers_blend]", Boolean.valueOf(glCapabilities.GL_ARB_draw_buffers_blend));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_elements_base_vertex]", Boolean.valueOf(glCapabilities.GL_ARB_draw_elements_base_vertex));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_indirect]", Boolean.valueOf(glCapabilities.GL_ARB_draw_indirect));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_draw_instanced]", Boolean.valueOf(glCapabilities.GL_ARB_draw_instanced));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_explicit_attrib_location]", Boolean.valueOf(glCapabilities.GL_ARB_explicit_attrib_location));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_explicit_uniform_location]", Boolean.valueOf(glCapabilities.GL_ARB_explicit_uniform_location));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_layer_viewport]", Boolean.valueOf(glCapabilities.GL_ARB_fragment_layer_viewport));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_program]", Boolean.valueOf(glCapabilities.GL_ARB_fragment_program));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_shader]", Boolean.valueOf(glCapabilities.GL_ARB_fragment_shader));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_fragment_program_shadow]", Boolean.valueOf(glCapabilities.GL_ARB_fragment_program_shadow));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_framebuffer_object]", Boolean.valueOf(glCapabilities.GL_ARB_framebuffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_framebuffer_sRGB]", Boolean.valueOf(glCapabilities.GL_ARB_framebuffer_sRGB));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_geometry_shader4]", Boolean.valueOf(glCapabilities.GL_ARB_geometry_shader4));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_gpu_shader5]", Boolean.valueOf(glCapabilities.GL_ARB_gpu_shader5));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_half_float_pixel]", Boolean.valueOf(glCapabilities.GL_ARB_half_float_pixel));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_half_float_vertex]", Boolean.valueOf(glCapabilities.GL_ARB_half_float_vertex));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_instanced_arrays]", Boolean.valueOf(glCapabilities.GL_ARB_instanced_arrays));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_map_buffer_alignment]", Boolean.valueOf(glCapabilities.GL_ARB_map_buffer_alignment));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_map_buffer_range]", Boolean.valueOf(glCapabilities.GL_ARB_map_buffer_range));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_multisample]", Boolean.valueOf(glCapabilities.GL_ARB_multisample));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_multitexture]", Boolean.valueOf(glCapabilities.GL_ARB_multitexture));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_occlusion_query2]", Boolean.valueOf(glCapabilities.GL_ARB_occlusion_query2));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_pixel_buffer_object]", Boolean.valueOf(glCapabilities.GL_ARB_pixel_buffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_seamless_cube_map]", Boolean.valueOf(glCapabilities.GL_ARB_seamless_cube_map));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_shader_objects]", Boolean.valueOf(glCapabilities.GL_ARB_shader_objects));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_shader_stencil_export]", Boolean.valueOf(glCapabilities.GL_ARB_shader_stencil_export));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_shader_texture_lod]", Boolean.valueOf(glCapabilities.GL_ARB_shader_texture_lod));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_shadow]", Boolean.valueOf(glCapabilities.GL_ARB_shadow));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_shadow_ambient]", Boolean.valueOf(glCapabilities.GL_ARB_shadow_ambient));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_stencil_texturing]", Boolean.valueOf(glCapabilities.GL_ARB_stencil_texturing));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_sync]", Boolean.valueOf(glCapabilities.GL_ARB_sync));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_tessellation_shader]", Boolean.valueOf(glCapabilities.GL_ARB_tessellation_shader));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_border_clamp]", Boolean.valueOf(glCapabilities.GL_ARB_texture_border_clamp));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_buffer_object]", Boolean.valueOf(glCapabilities.GL_ARB_texture_buffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_cube_map]", Boolean.valueOf(glCapabilities.GL_ARB_texture_cube_map));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_cube_map_array]", Boolean.valueOf(glCapabilities.GL_ARB_texture_cube_map_array));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_texture_non_power_of_two]", Boolean.valueOf(glCapabilities.GL_ARB_texture_non_power_of_two));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_uniform_buffer_object]", Boolean.valueOf(glCapabilities.GL_ARB_uniform_buffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_blend]", Boolean.valueOf(glCapabilities.GL_ARB_vertex_blend));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_buffer_object]", Boolean.valueOf(glCapabilities.GL_ARB_vertex_buffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_program]", Boolean.valueOf(glCapabilities.GL_ARB_vertex_program));
+        playerSnooper.addStatToSnooper("gl_caps[ARB_vertex_shader]", Boolean.valueOf(glCapabilities.GL_ARB_vertex_shader));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_bindable_uniform]", Boolean.valueOf(glCapabilities.GL_EXT_bindable_uniform));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_equation_separate]", Boolean.valueOf(glCapabilities.GL_EXT_blend_equation_separate));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_func_separate]", Boolean.valueOf(glCapabilities.GL_EXT_blend_func_separate));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_minmax]", Boolean.valueOf(glCapabilities.GL_EXT_blend_minmax));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_blend_subtract]", Boolean.valueOf(glCapabilities.GL_EXT_blend_subtract));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_draw_instanced]", Boolean.valueOf(glCapabilities.GL_EXT_draw_instanced));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_framebuffer_multisample]", Boolean.valueOf(glCapabilities.GL_EXT_framebuffer_multisample));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_framebuffer_object]", Boolean.valueOf(glCapabilities.GL_EXT_framebuffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_framebuffer_sRGB]", Boolean.valueOf(glCapabilities.GL_EXT_framebuffer_sRGB));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_geometry_shader4]", Boolean.valueOf(glCapabilities.GL_EXT_geometry_shader4));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_gpu_program_parameters]", Boolean.valueOf(glCapabilities.GL_EXT_gpu_program_parameters));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_gpu_shader4]", Boolean.valueOf(glCapabilities.GL_EXT_gpu_shader4));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_multi_draw_arrays]", Boolean.valueOf(false));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_packed_depth_stencil]", Boolean.valueOf(glCapabilities.GL_EXT_packed_depth_stencil));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_paletted_texture]", Boolean.valueOf(false));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_rescale_normal]", Boolean.valueOf(false));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_separate_shader_objects]", Boolean.valueOf(glCapabilities.GL_EXT_separate_shader_objects));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_shader_image_load_store]", Boolean.valueOf(glCapabilities.GL_EXT_shader_image_load_store));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_shadow_funcs]", Boolean.valueOf(glCapabilities.GL_EXT_shadow_funcs));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_shared_texture_palette]", Boolean.valueOf(glCapabilities.GL_EXT_shared_texture_palette));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_stencil_clear_tag]", Boolean.valueOf(glCapabilities.GL_EXT_stencil_clear_tag));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_stencil_two_side]", Boolean.valueOf(glCapabilities.GL_EXT_stencil_two_side));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_stencil_wrap]", Boolean.valueOf(glCapabilities.GL_EXT_stencil_wrap));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_3d]", Boolean.valueOf(false));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_array]", Boolean.valueOf(glCapabilities.GL_EXT_texture_array));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_buffer_object]", Boolean.valueOf(glCapabilities.GL_EXT_texture_buffer_object));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_integer]", Boolean.valueOf(glCapabilities.GL_EXT_texture_integer));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_lod_bias]", Boolean.valueOf(false));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_texture_sRGB]", Boolean.valueOf(glCapabilities.GL_EXT_texture_sRGB));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_vertex_shader]", Boolean.valueOf(false));
+        playerSnooper.addStatToSnooper("gl_caps[EXT_vertex_weighting]", Boolean.valueOf(false));
         playerSnooper.addStatToSnooper("gl_caps[gl_max_vertex_uniforms]", Integer.valueOf(GL11.glGetInteger(GL20.GL_MAX_VERTEX_UNIFORM_COMPONENTS)));
         GL11.glGetError();
         playerSnooper.addStatToSnooper("gl_caps[gl_max_fragment_uniforms]", Integer.valueOf(GL11.glGetInteger(GL20.GL_MAX_FRAGMENT_UNIFORM_COMPONENTS)));
@@ -3027,7 +3093,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
      */
     public static long getSystemTime()
     {
-        return Sys.getTime() * 1000L / Sys.getTimerResolution();
+        return System.currentTimeMillis();
     }
 
     /**
@@ -3121,7 +3187,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     {
         int i = Keyboard.getEventKey() == 0 ? Keyboard.getEventCharacter() : Keyboard.getEventKey();
 
-        if (i != 0 && !Keyboard.isRepeatEvent())
+        if (i != 0 && !Keyboard.getEventKeyState())
         {
             if (!(this.currentScreen instanceof GuiControls) || ((GuiControls)this.currentScreen).time <= getSystemTime() - 20L)
             {

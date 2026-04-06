@@ -10,8 +10,8 @@
     <description>MCP for 1.8.9</description>
 
     <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -34,6 +34,19 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Add-Opens>java.base/java.lang=ALL-UNNAMED java.base/java.lang.reflect=ALL-UNNAMED java.base/java.io=ALL-UNNAMED java.base/java.util=ALL-UNNAMED java.base/java.util.zip=ALL-UNNAMED java.desktop/java.awt=ALL-UNNAMED java.desktop/sun.awt=ALL-UNNAMED java.desktop/sun.lwawt=ALL-UNNAMED java.desktop/sun.java2d=ALL-UNNAMED java.desktop/sun.java2d.opengl=ALL-UNNAMED</Add-Opens>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
             </plugin>
         </plugins>
     </build>
@@ -68,13 +81,66 @@
         <dependency>
             <groupId>org.lwjgl</groupId>
             <artifactId>lwjgl</artifactId>
-            <version>2.9.4-nightly</version>
+            <version>3.3.3</version>
         </dependency>
 
         <dependency>
             <groupId>org.lwjgl</groupId>
-            <artifactId>util</artifactId>
-            <version>2.9.4-nightly</version>
+            <artifactId>lwjgl</artifactId>
+            <version>3.3.3</version>
+            <classifier>natives-windows</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-glfw</artifactId>
+            <version>3.3.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-glfw</artifactId>
+            <version>3.3.3</version>
+            <classifier>natives-windows</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-opengl</artifactId>
+            <version>3.3.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-opengl</artifactId>
+            <version>3.3.3</version>
+            <classifier>natives-windows</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-openal</artifactId>
+            <version>3.3.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-openal</artifactId>
+            <version>3.3.3</version>
+            <classifier>natives-windows</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-stb</artifactId>
+            <version>3.3.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-stb</artifactId>
+            <version>3.3.3</version>
+            <classifier>natives-windows</classifier>
         </dependency>
 
         <dependency>
@@ -188,45 +254,15 @@
         </dependency>
 
         <dependency>
-            <groupId>com.paulscode.sound</groupId>
-            <artifactId>libraryjavasound</artifactId>
-            <version>20101123</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.paulscode.sound</groupId>
-            <artifactId>codecwav</artifactId>
-            <version>20101023</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.paulscode.sound</groupId>
-            <artifactId>soundsystem</artifactId>
-            <version>20120107</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.paulscode.sound</groupId>
-            <artifactId>codecjorbis</artifactId>
-            <version>20101023</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.paulscode.sound</groupId>
-            <artifactId>librarylwjglopenal</artifactId>
-            <version>20100824</version>
-        </dependency>
-
-<!--        <dependency>-->
-<!--            <groupId>com.mojang</groupId>-->
-<!--            <artifactId>realmsclient</artifactId>-->
-<!--            <version>1.7.59</version>-->
-<!--        </dependency>-->
-
-        <dependency>
             <groupId>com.mojang</groupId>
             <artifactId>authlib</artifactId>
             <version>1.5.21</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.joml</groupId>
+            <artifactId>joml</artifactId>
+            <version>1.10.5</version>
         </dependency>
 
     </dependencies>

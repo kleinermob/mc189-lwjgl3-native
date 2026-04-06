@@ -83,8 +83,8 @@ import net.minecraft.world.chunk.Chunk;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.util.vector.Vector3f;
-import org.lwjgl.util.vector.Vector4f;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 public class RenderGlobal implements IWorldAccess, IResourceManagerReloadListener
 {

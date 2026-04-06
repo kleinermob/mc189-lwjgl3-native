@@ -60,11 +60,9 @@ import net.minecraft.world.WorldSettings;
 import net.minecraft.world.biome.BiomeGenBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.input.Mouse;
-import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GLContext;
-import org.lwjgl.util.glu.Project;
+import org.lwjgl.input.Mouse;
+import net.minecraft.client.renderer.GluUtils;
 
 public class EntityRenderer implements IResourceManagerReloadListener
 {
@@ -763,7 +761,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
             GlStateManager.scale(this.cameraZoom, this.cameraZoom, 1.0D);
         }
 
-        Project.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * MathHelper.SQRT_2);
+        GluUtils.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * MathHelper.SQRT_2);
         GlStateManager.matrixMode(5888);
         GlStateManager.loadIdentity();
 
@@ -841,7 +839,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
                 GlStateManager.translate((float)(-(xOffset * 2 - 1)) * f, 0.0F, 0.0F);
             }
 
-            Project.gluPerspective(this.getFOVModifier(partialTicks, false), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * 2.0F);
+            GluUtils.gluPerspective(this.getFOVModifier(partialTicks, false), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * 2.0F);
             GlStateManager.matrixMode(5888);
             GlStateManager.loadIdentity();
 
@@ -1068,7 +1066,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
 
     public void updateCameraAndRender(float partialTicks, long nanoTime)
     {
-        boolean flag = Display.isActive();
+        boolean flag = mc.isWindowFocused();
 
         if (!flag && this.mc.gameSettings.pauseOnLostFocus && (!this.mc.gameSettings.touchscreen || !Mouse.isButtonDown(1)))
         {
@@ -1087,7 +1085,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
         if (flag && Minecraft.isRunningOnMac && this.mc.inGameHasFocus && !Mouse.isInsideWindow())
         {
             Mouse.setGrabbed(false);
-            Mouse.setCursorPosition(Display.getWidth() / 2, Display.getHeight() / 2);
+            Mouse.setCursorPosition(mc.displayWidth / 2, mc.displayHeight / 2);
             Mouse.setGrabbed(true);
         }
 
@@ -1349,12 +1347,12 @@ public class EntityRenderer implements IResourceManagerReloadListener
             this.mc.mcProfiler.endStartSection("sky");
             GlStateManager.matrixMode(5889);
             GlStateManager.loadIdentity();
-            Project.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * 2.0F);
+            GluUtils.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * 2.0F);
             GlStateManager.matrixMode(5888);
             renderglobal.renderSky(partialTicks, pass);
             GlStateManager.matrixMode(5889);
             GlStateManager.loadIdentity();
-            Project.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * MathHelper.SQRT_2);
+            GluUtils.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * MathHelper.SQRT_2);
             GlStateManager.matrixMode(5888);
         }
 
@@ -1494,7 +1492,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
             this.mc.mcProfiler.endStartSection("clouds");
             GlStateManager.matrixMode(5889);
             GlStateManager.loadIdentity();
-            Project.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * 4.0F);
+            GluUtils.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * 4.0F);
             GlStateManager.matrixMode(5888);
             GlStateManager.pushMatrix();
             this.setupFog(0, partialTicks);
@@ -1503,7 +1501,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
             GlStateManager.popMatrix();
             GlStateManager.matrixMode(5889);
             GlStateManager.loadIdentity();
-            Project.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * MathHelper.SQRT_2);
+            GluUtils.gluPerspective(this.getFOVModifier(partialTicks, true), (float)this.mc.displayWidth / (float)this.mc.displayHeight, 0.05F, this.farPlaneDistance * MathHelper.SQRT_2);
             GlStateManager.matrixMode(5888);
         }
     }
@@ -1943,7 +1941,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
             flag = ((EntityPlayer)entity).capabilities.isCreativeMode;
         }
 
-        GL11.glFog(GL11.GL_FOG_COLOR, (FloatBuffer)this.setFogColorBuffer(this.fogColorRed, this.fogColorGreen, this.fogColorBlue, 1.0F));
+        GL11.glFogfv(GL11.GL_FOG_COLOR, (FloatBuffer)this.setFogColorBuffer(this.fogColorRed, this.fogColorGreen, this.fogColorBlue, 1.0F));
         GL11.glNormal3f(0.0F, -1.0F, 0.0F);
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         Block block = ActiveRenderInfo.getBlockAtEntityViewpoint(this.mc.theWorld, entity, partialTicks);
@@ -1971,7 +1969,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
                 GlStateManager.setFogEnd(f1);
             }
 
-            if (GLContext.getCapabilities().GL_NV_fog_distance)
+            if (org.lwjgl.opengl.GL.getCapabilities().GL_NV_fog_distance)
             {
                 GL11.glFogi(34138, 34139);
             }
@@ -2015,7 +2013,7 @@ public class EntityRenderer implements IResourceManagerReloadListener
                 GlStateManager.setFogEnd(f);
             }
 
-            if (GLContext.getCapabilities().GL_NV_fog_distance)
+            if (org.lwjgl.opengl.GL.getCapabilities().GL_NV_fog_distance)
             {
                 GL11.glFogi(34138, 34139);
             }
