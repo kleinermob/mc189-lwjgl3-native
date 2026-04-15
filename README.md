@@ -1,39 +1,81 @@
-# MavenMCP 1.8.9
+# Minecraft 1.8.9 — Native LWJGL3 Port
 
-### About
-Maven MCP 1.8.9 is an updated version of MCP. It uses Maven, has a clean code structure, supports Linux and version control in your projects!
+A native port of Minecraft 1.8.9 (MCP) from LWJGL2 to LWJGL3, built with Maven and Java 17.
+LWJGL2 compatibility shims (`org.lwjgl.input.Mouse`, `Keyboard`, etc.) are included in-tree so the original MC code runs on modern LWJGL3 + GLFW.
 
-### About the structure
-The code is split into two groups: Resources (assets, graphics, shaders etc.) and code.<br>
-Libraries are loaded from Maven.
+## Prerequisites
 
-### Setting up workspace
-1. Clone the repository
-2. Let it setup and index (just wait)
-4. Specify project SDK to **Java 8** It might not work with other versions of JDK
-5. Once it indexes, the project should be ready to go! :)
+- **Java 17+** (e.g. [Eclipse Temurin](https://adoptium.net/))
+- **Python 3.6+** (for asset download script only)
 
-### Building
-To build a working .jar file, which later can be put to `/versions` in MC folder, you just need to run `mvn clean package` command.
-<br>You can also use the Maven menu *on the right side*, or add a new run configuration, and run it from there (my favourite way).
-<br>Once the process is complete, artifacts will be in `/target` directory.
-<br>There's no requirement to delete MANIFEST from the jar before putting to MC folder.
+Maven is **not** required — the included Maven Wrapper (`mvnw`) handles it automatically.
 
-### Running
-To launch the client in the IDE, you need to execute Start.java, **and specify working directory to `./test_run/`**.<br>
+## Quick Start
 
-An example run configuration.<br>
-<img src="https://developers.marcloud.net/i/launchConfig.png"/>
+```bash
+# 1. Clone
+git clone <repo-url> && cd mc189-lwjgl3-native
 
-Minecraft's directory will be `./test_run/`. All saves, resource packs etc. will be there.
+# 2. Download Minecraft 1.8 assets (~200 MB, one-time)
+python scripts/download_assets.py
 
-### Migrating from old version of MCP
-Nothing easier. 
-Move your existing java code to `/src/main/java`, and any resources i.e. shaders, fonts etc. to `/src/main/resources`.
-If you added new libraries, make sure to add them to pom.xml, and you're set :D
+# 3. Compile and run
+./mvnw compile exec:java        # Linux / macOS
+mvnw.cmd compile exec:java      # Windows
+```
 
-### Support
-If you have any questions about this repo, let me know on <a href="https://marcloud.net/discord">my Discord</a>! ^^
+The game's working directory is `test_run/`. Saves, resource packs, and configs go there.
 
-<br><br>
-**May 1.8.9 survive!**
+## Building a JAR
+
+```bash
+./mvnw clean package
+```
+
+Output in `target/`. The fat JAR (`*-jar-with-dependencies.jar`) includes all dependencies.
+
+## Project Structure
+
+```
+src/main/java/
+├── net/minecraft/        # Decompiled MC 1.8.9 source
+├── org/lwjgl/input/      # LWJGL2 compat shims (Mouse, Keyboard)
+└── ...
+src/main/resources/       # Assets, shaders, fonts
+test_run/                 # Game working directory
+scripts/                  # Utility scripts
+.mvn/                     # Maven wrapper config + JVM flags
+```
+
+## Cross-Platform
+
+LWJGL3 native libraries are resolved automatically via Maven profiles:
+- **Windows** — auto-detected
+- **Linux** — auto-detected
+- **macOS** — auto-detected (includes ARM64/Apple Silicon)
+
+## Known Limitations
+
+- **Sound** — `SoundManager` is stubbed (no audio). The original paulscode dependency is not available.
+- **Twitch/Realms** — Stream and Realms integrations are non-functional stubs.
+- **macOS** — Untested. May need `-XstartOnFirstThread` JVM flag.
+
+## JVM Flags
+
+The required `--add-opens` flags for Java 17 are configured in `.mvn/jvm.config` and applied automatically when using `mvnw`.
+
+If running manually:
+```bash
+java --add-opens java.base/java.lang=ALL-UNNAMED \
+     --add-opens java.base/java.io=ALL-UNNAMED \
+     --add-opens java.base/java.nio=ALL-UNNAMED \
+     --add-opens java.base/sun.nio.ch=ALL-UNNAMED \
+     --add-opens java.base/java.net=ALL-UNNAMED \
+     -cp <classpath> net.minecraft.client.main.Main \
+     --username TestUser --version MavenMCP --accessToken 0 \
+     --assetsDir assets --assetIndex 1.8 --userProperties {}
+```
+
+## Credits
+
+Based on [MavenMCP 1.8.9](https://github.com/nicholasc120/MavenMCP-1.8.9) by marCloud.

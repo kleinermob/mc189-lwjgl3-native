@@ -690,10 +690,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     private void setupCallbacks()
     {
         GLFW.glfwSetWindowSizeCallback(this.windowHandle, (window, width, height) -> {
-            this.displayWidth = width;
-            this.displayHeight = height;
             this.windowResized = true;
-            Mouse.updateDisplayHeight(height);
         });
 
         GLFW.glfwSetWindowCloseCallback(this.windowHandle, (window) -> {
@@ -1249,10 +1246,10 @@ public class Minecraft implements IThreadListener, IPlayerUsage
             int i = this.displayWidth;
             int j = this.displayHeight;
 
-            // Get actual framebuffer size
-            IntBuffer width = IntBuffer.allocate(1);
-            IntBuffer height = IntBuffer.allocate(1);
-            GLFW.glfwGetFramebufferSize(this.windowHandle, width, height);
+            // Get actual window size (direct buffers required by LWJGL3)
+            IntBuffer width = org.lwjgl.BufferUtils.createIntBuffer(1);
+            IntBuffer height = org.lwjgl.BufferUtils.createIntBuffer(1);
+            GLFW.glfwGetWindowSize(this.windowHandle, width, height);
             this.displayWidth = width.get(0);
             this.displayHeight = height.get(0);
 
@@ -1268,6 +1265,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
                     this.displayHeight = 1;
                 }
 
+                Mouse.updateDisplayHeight(this.displayHeight);
                 this.resize(this.displayWidth, this.displayHeight);
             }
         }
@@ -1703,9 +1701,9 @@ public class Minecraft implements IThreadListener, IPlayerUsage
 
             if (this.fullscreen)
             {
-                // Save windowed position
-                IntBuffer x = IntBuffer.allocate(1);
-                IntBuffer y = IntBuffer.allocate(1);
+                // Save windowed position (direct buffers required by LWJGL3)
+                IntBuffer x = org.lwjgl.BufferUtils.createIntBuffer(1);
+                IntBuffer y = org.lwjgl.BufferUtils.createIntBuffer(1);
                 GLFW.glfwGetWindowPos(this.windowHandle, x, y);
                 this.windowedX = x.get(0);
                 this.windowedY = y.get(0);
@@ -1743,6 +1741,8 @@ public class Minecraft implements IThreadListener, IPlayerUsage
                     this.displayHeight = 1;
                 }
             }
+
+            Mouse.updateDisplayHeight(this.displayHeight);
 
             if (this.currentScreen != null)
             {
@@ -3187,7 +3187,7 @@ public class Minecraft implements IThreadListener, IPlayerUsage
     {
         int i = Keyboard.getEventKey() == 0 ? Keyboard.getEventCharacter() : Keyboard.getEventKey();
 
-        if (i != 0 && !Keyboard.getEventKeyState())
+        if (i != 0 && !Keyboard.isRepeatEvent())
         {
             if (!(this.currentScreen instanceof GuiControls) || ((GuiControls)this.currentScreen).time <= getSystemTime() - 20L)
             {
