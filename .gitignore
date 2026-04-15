@@ -45,3 +45,6 @@ run_minecraft.bat
 /test_run/usercache.json
 /test_run/options.txt
 /test_run/run_log.txt
+
+# Old LWJGL2 natives + vanilla jar (not needed, Maven handles deps)
+/test_run/versions/
